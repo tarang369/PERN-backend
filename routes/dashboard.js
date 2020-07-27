@@ -2,7 +2,7 @@ const router = require("express").Router();
 const pool = require("../db");
 const authorization = require("../middleware/authorization");
 
-//get all todos
+//get user
 router.get("/", authorization, async (req, res) => {
   try {
     //await
@@ -11,6 +11,20 @@ router.get("/", authorization, async (req, res) => {
       [req.user]
     );
     res.json(user.rows[0]);
+  } catch (err) {
+    console.error(err.message);
+  }
+});
+//search todos
+router.get("/todo", authorization, async (req, res) => {
+  try {
+    const { q } = req.query;
+    //await
+    const search = await pool.query(
+      "SELECT * FROM todo WHERE description ILIKE $1",
+      [`%${q}%`]
+    );
+    res.json(search.rows);
   } catch (err) {
     console.error(err.message);
   }
