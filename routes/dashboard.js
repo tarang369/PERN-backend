@@ -1,97 +1,89 @@
 const router = require("express").Router();
+const authorize = require("../middleware/authorization");
 const pool = require("../db");
-const authorization = require("../middleware/authorization");
 
-//get user
-router.get("/", authorization, async (req, res) => {
+//all todos and name
+router.get("/", authorize, async (req, res) => {
   try {
-    //await
     const user = await pool.query(
-      "SELECT user_name FROM users WHERE user_id = $1",
-      [req.user]
+      "SELECT u.user_name, t.todo_id, t.description FROM users AS u LEFT JOIN todo AS t ON u.user_id = t.user_id WHERE u.user_id = $1",
+      [req.user.id]
     );
-    res.json(user.rows[0]);
+
+    res.json(user.rows);
   } catch (err) {
-    console.error(err.message);
+    res.status(500).send("Server error");
   }
 });
-//search todos
-router.get("/todo", authorization, async (req, res) => {
-  try {
-    const { q } = req.query;
-    //await
-    const search = await pool.query(
-      "SELECT * FROM todo WHERE description ILIKE $1",
-      [`%${q}%`]
-    );
-    res.json(search.rows);
-  } catch (err) {
-    console.error(err.message);
-  }
-});
-//get all todos
-router.get("/todos", authorization, async (req, res) => {
-  try {
-    //await
-    const allTodo = await pool.query("SELECT * FROM todo");
-    res.json(allTodo.rows);
-  } catch (err) {
-    console.error(err.message);
-  }
-});
+
 //create a todo
-router.post("/todos", authorization, async (req, res) => {
+router.post("/todos", authorize, async (req, res) => {
   try {
-    //await
     const { description } = req.body;
-    console.log(description);
     const newTodo = await pool.query(
-      "INSERT INTO todo(description) VALUES($1) RETURNING *",
-      [description]
+      "INSERT INTO todo (user_id, description) VALUES ($1, $2) RETURNING *",
+      [req.user.id, description]
     );
+
     res.json(newTodo.rows[0]);
   } catch (err) {
     console.error(err.message);
   }
 });
-//get a todo
-router.get("/todo/:id", authorization, async (req, res) => {
-  try {
-    //await
-    const { id } = req.params;
-    const todo = await pool.query("SELECT * FROM todo WHERE todo_id = $1", [
-      id,
-    ]);
-    res.json(todo.rows[0]);
-  } catch (err) {
-    console.error(err.message);
-  }
-});
+
 //update a todo
-router.put("/todo/:id", authorization, async (req, res) => {
+router.put("/todo/:id", authorize, async (req, res) => {
   try {
-    //await
     const { id } = req.params;
     const { description } = req.body;
-    const todo = await pool.query(
-      "UPDATE todo SET description = $1 WHERE todo_id = $2",
-      [description, id]
+    const updateTodo = await pool.query(
+      "UPDATE todo SET description = $1 WHERE todo_id = $2 AND user_id = $3 RETURNING *",
+      [description, id, req.user.id]
     );
-    res.json(`Todo:${id} was updated`);
+
+    if (updateTodo.rows.length === 0) {
+      return res.json("This todo is not yours");
+    }
+
+    res.json("Todo was updated");
   } catch (err) {
     console.error(err.message);
   }
 });
 
 //delete a todo
-router.delete("/todo/:id", authorization, async (req, res) => {
+router.delete("/todos/:id", authorize, async (req, res) => {
   try {
-    //await
     const { id } = req.params;
-    const delTodo = await pool.query("DELETE FROM todo WHERE todo_id = $1", [
-      id,
-    ]);
-    res.json(`Todo:${id} was deleted`);
+    const deleteTodo = await pool.query(
+      "DELETE FROM todo WHERE todo_id = $1 AND user_id = $2 RETURNING *",
+      [id, req.user.id]
+    );
+
+    if (deleteTodo.rows.length === 0) {
+      return res.json("This Todo is not yours");
+    }
+
+    res.json("Todo was deleted");
+  } catch (err) {
+    console.error(err.message);
+  }
+});
+
+//search todos
+router.get("/todo", authorize, async (req, res) => {
+  try {
+    const { q } = req.query;
+
+    const search = await pool.query(
+      "SELECT u.user_name, t.todo_id, t.description FROM users AS u LEFT JOIN todo AS t ON u.user_id = t.user_id WHERE description ILIKE $1 AND t.user_id = $2",
+      [`%${q}%`, req.user.id]
+    );
+    if (search.rows.length === 0) {
+      return res.json("No todos found");
+    }
+
+    res.json(search.rows);
   } catch (err) {
     console.error(err.message);
   }
